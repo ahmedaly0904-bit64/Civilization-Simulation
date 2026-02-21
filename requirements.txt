@@ -1,0 +1,4 @@
+mesa==3.4.1
+matplotlib==3.10.7
+jupyter==1.0.0
+notebook==7.5.2
