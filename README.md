@@ -1,5 +1,9 @@
 # Civilization Simulation 🏛️
 
+Project name: Omran (عُمران)
+
+This project is named "Omran" (Arabic: عُمران, transliterated "Omran") in homage to Ibn Khaldun's concept of "ʿilm al-ʿumrān" — the systematic study of civilization, urbanization, and social organization. The simulation models population growth, resource management, conflict, and collapse — themes central to Ibn Khaldun's analysis — so the name signals the project's intellectual lineage and its focus on the rise, stability, and decline of societies.
+
 A high-fidelity Agent-Based Model (ABM) simulating the complex dynamics, evolution, and collapse of civilizations. This project leverages Object-Oriented Programming (OOP) and advanced numerical methods to model population growth and resource competition among different nations.
 
 ---
