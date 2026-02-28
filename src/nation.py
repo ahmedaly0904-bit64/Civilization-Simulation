@@ -81,7 +81,7 @@ class NationAgent(Agent):
                 self.attack(enemy)
         # Record historical data
         self.food_history.append(self.food)
-        self.pop_history.append(self.population)
+        self.pop_history.append(int(self.population))
 
     def receive_damage(self, amount):
         """Reduce population due to warfare."""
