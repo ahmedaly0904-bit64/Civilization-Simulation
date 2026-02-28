@@ -57,7 +57,7 @@ class NationAgent(Agent):
         if self.food >= 0:
             # Normal population growth using Logistic equation and RK4
             self.population = solve_rk4(
-                self.population,
+                int(self.population),
                 TIME_STEP,
                 self.growth_rate,
                 self.carrying_capacity
