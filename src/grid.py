@@ -1,13 +1,11 @@
 import numpy as np
-from nation import Nation 
+from collections import defaultdict
+from nation import Nation
 
 
 class WorldGrid:
     """
     Manages the spatial environment of the simulation.
-    Each cell on the grid holds the 'presence strength'
-    of a civilization (0.0 → 1.0).
-
     Responsibilities:
     - Track which nation controls which cell
     - Spread civilizations across the grid over time
@@ -17,13 +15,9 @@ class WorldGrid:
     def __init__(self, width: int = 50, height: int = 50):
         self.width  = width
         self.height = height
-
-        self.presence = np.zeros((height, width))
-
         self.ownership = np.empty((height, width), dtype=object)
 
     def place_nation(self, nation, x: int, y: int):
-        self.presence[y][x]  = 1.0
         self.ownership[y][x] = nation
 
     def get_neighbors(self, nation: Nation ) -> list:
@@ -53,70 +47,59 @@ class WorldGrid:
         Spread rate depends on population relative to carrying capacity.
         Called once per simulation step (year).
         """
-        new_presence  = self.presence.copy()
         new_ownership = self.ownership.copy()
-
         for nation in nations:
             if not nation.is_alive:
                 continue
-
             spread_rate = nation.population / nation.carrying_capacity
             spread_rate = min(1.0, spread_rate)
 
-            ys, xs = np.where(self.ownership == nation)
+            owned = self.ownership == nation
+            empty_right = self.ownership[:, 1:] == np.array(None)
+            empty_left = self.ownership[:, :-1] == np.array(None)
+            empty_top = self.ownership[:-1, :] == np.array(None)
+            empty_down = self.ownership[1:, :] == np.array(None)
 
-            for y, x in zip(ys, xs):
-                for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    ny, nx = y + dy, x + dx
+            can_spread = owned[:,:-1] & empty_right
+            new_ownership[:, 1:][can_spread] = nation
+            can_spread = owned[:, 1:] & empty_left
+            new_ownership[:, :-1][can_spread] = nation
+            can_spread = owned[1:, :] & empty_top
+            new_ownership[:-1, :][can_spread] = nation
+            can_spread = owned[:-1, :] & empty_down
+            new_ownership[1:, :][can_spread] = nation
 
-                    if not (0 <= ny < self.height and 0 <= nx < self.width):
-                        continue
 
-                    neighbor_owner = self.ownership[ny][nx]
-
-                    if neighbor_owner is None:
-                        new_strength = self.presence[y][x] * spread_rate * 0.5
-                        if new_strength > new_presence[ny][nx]:
-                            new_presence[ny][nx]  = new_strength
-                            new_ownership[ny][nx] = nation
-
-                    elif neighbor_owner is not nation:
-                        self._resolve_conflict(
-                            nation, neighbor_owner,
-                            ny, nx,
-                            new_presence, new_ownership
-                        )
-
-        self.presence  = new_presence
         self.ownership = new_ownership
+        snapshot,id_to_nation = self.get_snapshot(nations)
+        horizontal = snapshot[:, :-1] != snapshot[:, 1:]
+        vertical = snapshot[:-1, :] != snapshot[1:, :]
+        ys_h , xs_h = np.where(horizontal)
+        ys_v , xs_v = np.where(vertical)
+        border_lengths = defaultdict(int)
 
+        for y, x in zip(ys_h, xs_h):
+            if snapshot[y, x] == 0 or snapshot[y, x + 1] == 0:
+                continue
+            n1 = id_to_nation[snapshot[y, x]]
+            n2 = id_to_nation[snapshot[y, x + 1]]
+            pair = frozenset({n1, n2})
+            border_lengths[pair] += 1
 
-    def _resolve_conflict(
-        self,
-        attacker,
-        defender,
-        y: int, x: int,
-        new_presence:  np.ndarray,
-        new_ownership: np.ndarray,
+        for y, x in zip(ys_v, xs_v):
+            if snapshot[y, x] == 0 or snapshot[y + 1, x] == 0:
+                continue
+            n1 = id_to_nation[snapshot[y, x]]
+            n2 = id_to_nation[snapshot[y + 1, x]]
+            pair = frozenset({n1, n2})
+            border_lengths[pair] += 1
+        for pair, length in border_lengths.items():
+            n1,n2 = tuple(pair)
+            if not n1.is_alive or not n2.is_alive:
+                continue
+            n1.border_attrition(length)
+            n2.border_attrition(length)
 
-    ):
-        """
-        Two civilizations meet on a cell — the stronger one wins.
-        Strength = population × presence value at the contested cell.
-        """
-        attacker_strength = attacker.population * self.presence[y][x]
-        defender_strength = defender.population * self.presence[y][x]
-
-        if attacker_strength > defender_strength:
-            new_presence[y][x]  = self.presence[y][x] * 0.7
-            new_ownership[y][x] = attacker
-
-            attacker.win_clash()
-            defender.lose_clash()
-        else:
-            new_presence[y][x]  = self.presence[y][x] * 0.8
-            attacker.lose_clash()
-            defender.win_clash()
 
 
     def display(self, nations: list):
@@ -138,14 +121,12 @@ class WorldGrid:
         Each cell = index of owning nation (0 = empty, 1/2/3 = nation).
         """
         nation_ids={}
-        snapshot = np.zeros((self.height, self.width))
+        id_to_nation={}
         for i,nation in enumerate(nations):
             nation_ids[nation]=i+1
-        for y in range(self.height):
-            for x in range(self.width):
-                owner = self.ownership[y][x]
-                if owner is not None:
-                    snapshot[y][x] = nation_ids[owner]
-                else:
-                    snapshot[y][x] = 0
-        return snapshot
+            id_to_nation[i+1] = nation
+
+        get_id = np.vectorize(lambda nation: nation_ids.get(nation, 0))
+        snapshot = get_id(self.ownership)
+
+        return snapshot,id_to_nation

@@ -6,7 +6,7 @@ FAMINE_INTENSITY_COEFFICIENT = 0.3
 ENEMY_DAMAGE               = 0.1
 ATTACKER_DAMAGE            = 0.04
 TIME_STEP                  = 1
-CONSUMPTION_PER_PERSON     = 10
+CONSUMPTION_PER_PERSON     = 2
 MINOR_DAMAGE               = 0.05
 MAJOR_DAMAGE               = 0.1
 
@@ -103,6 +103,9 @@ class Nation:
         if self.population < 1:
             self.population = 0
 
+    def border_attrition(self, border_length: int):
+        damage = min(0.5,0.2 * border_length / self.population)
+        self.receive_damage(damage)
     def win_clash(self):
         self.receive_damage(MINOR_DAMAGE)
 
@@ -113,8 +116,6 @@ class Nation:
         enemy.war_count += 1    
         self.receive_damage(ATTACKER_DAMAGE)
         self.war_count += 1
-
-
     def __repr__(self) -> str:
         return (
             f"Nation({self.name} | "

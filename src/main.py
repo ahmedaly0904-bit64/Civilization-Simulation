@@ -19,46 +19,50 @@ def print_summary(world):
     print("=" * 75 + "\n")
 
 starting_nations = [
-            Nation(
-                name="Nation_A",
-                population=420,
-                food=82300,
-                food_production=1000,
-                growth_rate=0.02,
-                carrying_capacity=1000,
-            ),
-            Nation(
-                name="Nation_B",
-                population=901,
-                food=10000,
-                food_production=1600,
-                growth_rate=0.025,
-                carrying_capacity=2000,
-
-            ),
-            Nation(
-                name="Nation_C",
-                population=802,
-                food=40000,
-                food_production=1200,
-                growth_rate=0.015,
-                carrying_capacity=1500,
-            ),
-        ]
+    Nation(
+        name="Nation_A",
+        population=50000,
+        food=1200000,
+        food_production=6500,
+        growth_rate=0.03,
+        carrying_capacity=150000,
+    ),
+    Nation(
+        name="Nation_B",
+        population=80000,
+        food=1800000,
+        food_production=10500,
+        growth_rate=0.035,
+        carrying_capacity=200000,
+    ),
+    Nation(
+        name="Nation_C",
+        population=30000,
+        food=400000,
+        food_production=4000,
+        growth_rate=0.025,
+        carrying_capacity=120000,
+    ),
+]
 
 world = WorldModel(starting_nations)
 world.run(100)
 print_summary(world)
 world.display()
 colorscale = [
-    [0.0,   "grey"],
+    [0.0,   "black"],
     [0.33,  "red"],
     [0.66,  "green"],
     [1.0,   "blue"],
 ]
-snapshot = world.get_snapshot()
+snapshot,_ = world.get_snapshot()
 fig = make_subplots(1,2)
-fig.add_trace(go.Heatmap(z=snapshot, colorscale=colorscale),row=1,col=1)
+fig.add_trace(go.Heatmap(
+    z=snapshot,
+    colorscale=colorscale,
+    zmin=0,
+    zmax=3
+), row=1, col=1)
 fig.update_yaxes(tickformat="d", title_text="Population", row=1, col=2)
 
 for nation in world.nations:
@@ -75,3 +79,4 @@ fig.update_layout(
     yaxis_title= 'Y-axis',
 )
 fig.show()
+
