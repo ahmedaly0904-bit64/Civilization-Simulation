@@ -15,11 +15,14 @@ def solve_rk4(population, time_step, growth_rate, carrying_capacity):
 
 def stochastic_growth(population, growth_rate , carrying_capacity ,TIME_STEP = 1):
     exact_value = solve_rk4(population, TIME_STEP, growth_rate, carrying_capacity)
-    base = int(exact_value)
-    fraction = exact_value - base
+    return monte_carlo(exact_value)
 
+
+def monte_carlo(fraction):
     # Roll the dice against the fraction (The "Monte Carlo" step)
+    base = int(fraction)
+    fraction = fraction - base
     if random.random() < fraction:
-        return base + 1
+        return base +  1
     else:
         return base

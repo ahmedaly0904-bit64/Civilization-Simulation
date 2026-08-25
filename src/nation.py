@@ -1,5 +1,5 @@
 import random
-from functions import stochastic_growth
+from functions import stochastic_growth, monte_carlo
 from traits import Traits
 WARFARE_PROBABILITY        = 0.1
 FAMINE_INTENSITY_COEFFICIENT = 0.3
@@ -7,6 +7,9 @@ ENEMY_DAMAGE               = 0.1
 ATTACKER_DAMAGE            = 0.04
 TIME_STEP                  = 1
 CONSUMPTION_PER_PERSON     = 2
+PEOPLE_PER_CELL = 2000
+FOOD_PER_CELL = PEOPLE_PER_CELL * CONSUMPTION_PER_PERSON
+
 
 class Nation:
     """
@@ -21,38 +24,40 @@ class Nation:
         name,
         population,
         food,
-        food_production,
         growth_rate,
-        carrying_capacity,
     ):
         """
         Args:
             name             : Name of the civilization
             population       : Initial population count
             food             : Initial food stock
-            food_production  : Annual food production capacity
             growth_rate      : Population growth rate (r)
-            carrying_capacity: Maximum sustainable population (K)
         """
         self.name              = name
         self.population        = population
         self.food              = food
-        self.food_production   = food_production
         self.growth_rate       = growth_rate
-        self.carrying_capacity = carrying_capacity
-
         self.pop_history        = [population]
         self.food_history       = [food]
-
         self.war_count    = 0
         self.famine_count = 0
         self.idea               = Traits()
+        self.territory = 0
+
     @property
     def is_alive(self) -> bool:
         """True if the civilization still exists."""
         return self.population > 0
-
-
+    @property
+    def food_production(self) -> float:
+        """Annual food output — derived from controlled territory."""
+        return self.territory * FOOD_PER_CELL
+    @property
+    def carrying_capacity(self) -> float:
+        """Maximum sustainable population (K) — what the land can feed."""
+        return self.food_production / CONSUMPTION_PER_PERSON
+    def set_territory(self, cell_count: int):
+        self.territory = cell_count
     def step(self, neighbors: list = None):
         if not self.is_alive:
             return
@@ -83,7 +88,7 @@ class Nation:
         else:
             deficit_per_person = abs(self.food) / max(1, self.population)
             death_rate = min(1.0, deficit_per_person * FAMINE_INTENSITY_COEFFICIENT)
-            deaths = int(self.population * death_rate)
+            deaths = monte_carlo(self.population * death_rate)
             self.change_populations(-deaths)
             self.food = 0
             self.famine_count += 1
@@ -96,7 +101,7 @@ class Nation:
                 self.attack(enemy)
 
     def receive_damage(self, amount: float):
-        deaths = int(self.population * amount)
+        deaths = monte_carlo(self.population * amount)
         if self.population - deaths < 1:
             deaths = self.population
         self.change_populations(-deaths)

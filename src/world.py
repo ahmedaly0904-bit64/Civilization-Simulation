@@ -31,6 +31,7 @@ class WorldModel:
                 y = random.randint(0, self.GRID_HEIGHT - 1)
                 if (x, y) not in used_positions:
                     self.grid.place_nation(nation, x, y)
+                    nation.set_territory(1)
                     used_positions.add((x, y))
                     break
 

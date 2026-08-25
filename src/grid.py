@@ -72,6 +72,8 @@ class WorldGrid:
 
         self.ownership = new_ownership
         snapshot,id_to_nation = self.get_snapshot(nations)
+        for nation_id, nation in id_to_nation.items():
+            nation.set_territory(int(np.count_nonzero(snapshot == nation_id)))
         horizontal = snapshot[:, :-1] != snapshot[:, 1:]
         vertical = snapshot[:-1, :] != snapshot[1:, :]
         ys_h , xs_h = np.where(horizontal)

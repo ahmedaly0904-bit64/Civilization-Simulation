@@ -5,7 +5,7 @@
 > *translating Ibn Khaldun's theory of Asabiyyah into computational physics."*
 
 > [!WARNING]
-> **Document status:** verified against actual `src/` on **25 August 2026**.
+> **Document status:** verified against actual `src/` on **26 August 2026**.
 > Claims that were not present in the code have been removed. Every equation below
 > **exists in the code** unless explicitly marked otherwise.
 
@@ -127,12 +127,42 @@ recovered via a Monte Carlo step (`stochastic_growth`) to avoid float drift.
 ### Food & Famine — implemented
 
 ```
+production  = territory × FOOD_PER_CELL × uniform(0.8, 1.2)
 consumption = population × CONSUMPTION_PER_PERSON
-production  = food_production × uniform(0.8, 1.2)
+K           = (territory × FOOD_PER_CELL) / CONSUMPTION_PER_PERSON
 ```
 
 If food goes negative, deaths scale with the per-person deficit
 and `famine_count` increments.
+
+### Land Drives Everything — implemented
+
+`territory` (the cell count a nation controls) is the only stored quantity;
+`food_production` and `carrying_capacity` are both `@property` derived from it,
+so they cannot fall out of sync with the map. `WorldGrid.spread()` counts each
+nation's cells and hands the number to `Nation.set_territory()` — the same
+"send a spatial fact, let the nation interpret it" pattern used for border
+attrition.
+
+`FOOD_PER_CELL` is derived from a stated assumption rather than tuned:
+
+```
+one cell   = an agricultural region feeding ~2000 people
+PEOPLE_PER_CELL = 2000
+FOOD_PER_CELL   = PEOPLE_PER_CELL × CONSUMPTION_PER_PERSON = 4000
+```
+
+### Unbiased Rounding — implemented
+
+`functions.monte_carlo(value)` turns a fractional head-count into an integer by
+rolling against the fraction instead of truncating it. Used by population
+growth, famine deaths and combat damage.
+
+> [!NOTE]
+> Truncating damage created an **absorbing state**: a nation reduced to one
+> person took `int(1 × 0.5) = 0` deaths every year and became immortal while
+> keeping its entire territory. Rounding must never silently favour one
+> direction.
 
 ### Warfare — implemented
 
@@ -199,6 +229,18 @@ Without it the model is mathematically correct but completely inert.
 | 4 | Economy — Resources | ⚠️ partial |
 | 5 | Interaction — Conflict / Trade | ⚠️ partial |
 | 6 | Advanced Logic — AI | ⏳ |
+
+> [!CAUTION]
+> **Open structural gaps (26 August 2026):**
+> - **Territory is never released.** `ownership` is written on expansion and
+>   never cleared — there is no retreat, no conquest, and a nation that goes
+>   extinct keeps its cells forever. In a 500-year run an extinct nation held
+>   1324 of 2500 cells from year 100 onward, walling its neighbours in.
+>   Without contraction the second half of the Khaldunian cycle cannot occur.
+> - **Food is inert.** Production depends on land alone, so a nation of one
+>   person farms its whole empire; stock grows without bound and `famine_count`
+>   stays at 0 for every nation in every run. `K` and the food balance are two
+>   ceilings derived from the same fact — one of them is redundant as written.
 
 **Why "partial":**
 

@@ -26,27 +26,21 @@ def print_summary(world):
 starting_nations = [
     Nation(
         name="Nation_A",
-        population=50000,
-        food=1200000,
-        food_production=6500,
+        population=500,
+        food=2000,
         growth_rate=0.03,
-        carrying_capacity=150000,
     ),
     Nation(
         name="Nation_B",
-        population=80000,
-        food=1800000,
-        food_production=10500,
+        population=80,
+        food=2000,
         growth_rate=0.035,
-        carrying_capacity=200000,
     ),
     Nation(
         name="Nation_C",
-        population=30000,
-        food=400000,
-        food_production=4000,
+        population=300,
+        food=2000,
         growth_rate=0.025,
-        carrying_capacity=120000,
     ),
 ]
 random.choice(starting_nations).idea.infect(0.01)
