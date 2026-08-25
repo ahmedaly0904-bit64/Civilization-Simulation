@@ -1,14 +1,12 @@
 import random
-from functions import solve_rk4
-
+from functions import stochastic_growth
+from traits import Traits
 WARFARE_PROBABILITY        = 0.1
 FAMINE_INTENSITY_COEFFICIENT = 0.3
 ENEMY_DAMAGE               = 0.1
 ATTACKER_DAMAGE            = 0.04
 TIME_STEP                  = 1
 CONSUMPTION_PER_PERSON     = 2
-MINOR_DAMAGE               = 0.05
-MAJOR_DAMAGE               = 0.1
 
 class Nation:
     """
@@ -48,7 +46,7 @@ class Nation:
 
         self.war_count    = 0
         self.famine_count = 0
-
+        self.idea               = Traits()
     @property
     def is_alive(self) -> bool:
         """True if the civilization still exists."""
@@ -64,7 +62,6 @@ class Nation:
         if neighbors:
             self._attempt_warfare(neighbors)
 
-        self.pop_history.append(self.population)
         self.food_history.append(self.food)
 
     def _update_food(self):
@@ -75,19 +72,20 @@ class Nation:
 
     def _update_population(self):
         if self.food >= 0:
-            # Normal logistic growth via RK4
-            self.population = solve_rk4(
+            new_population = stochastic_growth(
                 self.population,
-                TIME_STEP,
                 self.growth_rate,
                 self.carrying_capacity,
+                TIME_STEP,
             )
+            delta = new_population - self.population
+            self.change_populations(delta)
         else:
             deficit_per_person = abs(self.food) / max(1, self.population)
             death_rate = min(1.0, deficit_per_person * FAMINE_INTENSITY_COEFFICIENT)
-            deaths      = int(self.population * death_rate)
-            self.population = max(0, self.population - deaths)
-            self.food       = 0
+            deaths = int(self.population * death_rate)
+            self.change_populations(-deaths)
+            self.food = 0
             self.famine_count += 1
 
     def _attempt_warfare(self, neighbors: list):
@@ -97,25 +95,22 @@ class Nation:
             if self.population > enemy.population:
                 self.attack(enemy)
 
-
     def receive_damage(self, amount: float):
-        self.population = max(0, self.population - self.population * amount)
-        if self.population < 1:
-            self.population = 0
+        deaths = int(self.population * amount)
+        if self.population - deaths < 1:
+            deaths = self.population
+        self.change_populations(-deaths)
 
     def border_attrition(self, border_length: int):
         damage = min(0.5,0.2 * border_length / self.population)
         self.receive_damage(damage)
-    def win_clash(self):
-        self.receive_damage(MINOR_DAMAGE)
-
-    def lose_clash(self):
-        self.receive_damage(MAJOR_DAMAGE)
     def attack(self, enemy: "Nation"):
         enemy.receive_damage(ENEMY_DAMAGE)
         enemy.war_count += 1    
         self.receive_damage(ATTACKER_DAMAGE)
         self.war_count += 1
+    def change_populations(self, delta:float):
+        self.population = max(0, self.population + delta)
     def __repr__(self) -> str:
         return (
             f"Nation({self.name} | "

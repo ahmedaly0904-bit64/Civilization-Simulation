@@ -2,6 +2,11 @@ from world import WorldModel
 from nation import Nation
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import random
+
+
+random.seed(42)
+
 
 def print_summary(world):
     print("\n" + "=" * 75)
@@ -44,9 +49,9 @@ starting_nations = [
         carrying_capacity=120000,
     ),
 ]
-
+random.choice(starting_nations).idea.infect(0.01)
 world = WorldModel(starting_nations)
-world.run(100)
+world.run(500)
 print_summary(world)
 world.display()
 colorscale = [

@@ -4,6 +4,11 @@
 > *"To simulate how shared ideas shape the rise and fall of civilizations —*
 > *translating Ibn Khaldun's theory of Asabiyyah into computational physics."*
 
+> [!WARNING]
+> **Document status:** verified against actual `src/` on **25 August 2026**.
+> Claims that were not present in the code have been removed. Every equation below
+> **exists in the code** unless explicitly marked otherwise.
+
 ---
 
 ## Why Omran?
@@ -23,14 +28,16 @@ that theory into equations and code.
 
 ## What the Code Does Right Now
 
-Three forces drive every civilization in the simulation:
+Four forces drive every civilization in the simulation:
 
 - **Population** — grows logistically via RK4, collapses under famine
-- **Territory** — spreads across a 2D NumPy grid, contested by warfare
 - **Food** — produced each year with weather randomness, consumed by population
+- **Territory** — spreads across a 2D NumPy grid, contested by warfare
+- **Ideas** — an SIR model inside each nation (S / I / R compartments)
 
-When two civilizations meet on the grid, the stronger one takes the cell.
-Both sides take losses. Civilizations expand until they hit each other — or collapse.
+Civilizations expand into empty cells until they meet. Where two nations touch,
+both take attrition damage proportional to the shared border length.
+Nations may also declare war on a neighbor if they outnumber it.
 
 ---
 
@@ -39,12 +46,14 @@ Both sides take losses. Civilizations expand until they hit each other — or co
 ```
 omran/
 ├── src/
-│   ├── functions.py   # RK4 solver + stochastic growth — pure math, no dependencies
-│   ├── nation.py      # Nation class — population, food, warfare behavior
-│   ├── grid.py        # WorldGrid — spatial map, neighbor detection, conflict resolution
-│   ├── world.py       # WorldModel — orchestrator, runs the simulation loop
-│   └── main.py        # Entry point — creates nations, runs, renders Plotly output
-├── MVP/               # v1 — Jupyter notebook, Mesa + Matplotlib (preserved for reference)
+│   ├── functions.py   # RK4 solver + stochastic growth — pure math
+│   ├── traits.py      # Traits — SIR fractions (s/i/r summing to 1.0)
+│   ├── nation.py      # Nation — population, food, warfare, famine
+│   ├── grid.py        # WorldGrid — spatial map, neighbors, spread, borders
+│   ├── world.py       # WorldModel — orchestrator, runs the yearly loop
+│   ├── main.py        # Entry point — creates nations, runs, renders Plotly
+│   └── asabiyyah.py   # EMPTY (0 bytes) — placeholder, not implemented
+├── MVP/               # v1 — Jupyter notebook, Mesa + Matplotlib (reference)
 └── README.md
 ```
 
@@ -64,61 +73,119 @@ omran/
 
 ## Architectural Decisions
 
-This project went through a deliberate architectural refactor.
-These are the decisions that shaped the current structure:
-
 **Dependency Injection**
 `WorldModel` does not create nations internally.
 Nations are defined in `main.py` and passed in as a parameter.
-The simulation engine is decoupled from the scenario — you can swap
-civilizations without touching the engine.
+The engine is decoupled from the scenario.
 
 **Single Source of Truth — Spatial Data**
 Nations have no `x` or `y` attributes.
 `WorldGrid` owns the `ownership` array and is the only place that knows
-where any civilization is. This prevents state drift between the agent
-and the map.
+where any civilization is.
 
 **Spatial Logic Belongs in the Grid**
-`get_neighbors()` was moved from `WorldModel` to `WorldGrid`.
-It queries the `ownership` array directly via `np.where` instead of
-comparing coordinate attributes on Nation objects.
+`get_neighbors()` lives in `WorldGrid`.
+It queries the `ownership` array via `np.where` instead of comparing
+coordinate attributes on Nation objects.
 
 **Combat SRP**
-`WorldGrid._resolve_conflict()` does not call `receive_damage()` directly.
-It calls `win_clash()` and `lose_clash()` on Nation — keeping the grid
-responsible for spatial outcomes and the Nation responsible for
-its own demographic response.
+`WorldGrid` does not modify population directly.
+It calls `nation.border_attrition(border_length)` — passing a *spatial fact*
+and letting the Nation translate it into its own demographic response.
+
+**Border Length Scaling**
+Attrition is aggregated **once per nation-pair** using `defaultdict` +
+`frozenset`, not per-cell. This was the fix for the Phase-3 mass-extinction bug.
+
+**Population Changes Funnel Through One Control Point**
+Every path that changes population — growth, famine, war, attrition —
+goes through `Nation.change_populations()`. Its body is a single line today;
+its value is being the one place where a population rule can be enforced.
+
+**Ideas Are Fractions, Not Head-counts**
+`Traits` stores `s`, `i`, `r` as fractions constrained by `s + i + r == 1.0`,
+enforced inside the class by `_check()`. `Nation` owns the head-count and never
+writes to `Traits`; births and deaths do not touch the composition at all.
+This removed an entire class of integer-rounding drift rather than patching it.
 
 **Output is Not the Engine's Problem**
-`print_summary()` was moved out of `WorldModel` into `main.py`.
-The simulation engine returns data. Formatting is the caller's responsibility.
+`print_summary()` lives in `main.py`. The engine returns data.
 
 ---
 
 ## Technical Principles
 
-### Population Growth
-```
-dP/dt = r x P x (1 - P/K)
-```
-Solved via RK4 at each time step. Integer population is recovered via
-a Monte Carlo step (stochastic rounding) to avoid float drift.
+### Population Growth — implemented
 
-### Territorial Expansion
 ```
-spread_rate = population / carrying_capacity
+dP/dt = r × P × (1 − P/K)
 ```
-Each year, a civilization expands to neighboring cells proportional to
-how close it is to its carrying capacity.
 
-### Warfare on the Grid
-```
-attacker_strength = population x presence_value
-defender_strength = population x presence_value
+Solved via RK4 each step (`functions.solve_rk4`). Integer population is
+recovered via a Monte Carlo step (`stochastic_growth`) to avoid float drift.
 
-winner takes the cell — both sides take losses
+### Food & Famine — implemented
+
 ```
+consumption = population × CONSUMPTION_PER_PERSON
+production  = food_production × uniform(0.8, 1.2)
+```
+
+If food goes negative, deaths scale with the per-person deficit
+and `famine_count` increments.
+
+### Warfare — implemented
+
+Two independent mechanisms:
+
+**1. Declared war** (`Nation._attempt_warfare`)
+With probability `WARFARE_PROBABILITY`, a nation picks a random living
+neighbor. It attacks **only if it has more people**. Both sides take losses
+(`ENEMY_DAMAGE` = 0.1, `ATTACKER_DAMAGE` = 0.04).
+
+**2. Border attrition** (`WorldGrid.spread` → `Nation.border_attrition`)
+Every pair of touching nations loses population each year:
+
+```
+damage = min(0.5, 0.2 × border_length / population)
+```
+
+### Idea Spread — implemented
+
+An SIR model over fractions. Each year a nation's force of infection is summed
+over its **grid neighbours only**, then applied once:
+
+```
+λ  = Σ over neighbours of  β × i_neighbour      β = IDEA_TRANSMISSION_RATE = 0.05
+s -= min(1, λ) × s                              (moved into i)
+i -= γ × i                                      γ = RECOVERY_RATE = 0.1  (moved into r)
+```
+
+`Traits` holds `_S`, `_I`, `_R` privately with read-only properties, and
+`_check()` enforces `s + i + r == 1.0` after every transfer.
+
+Because the sum is gathered before it is applied, the result no longer depends
+on the order nations are iterated in — a two-phase update, the same pattern
+`WorldGrid.spread()` uses with its `ownership.copy()`.
+
+The initial carrier is a **scenario** decision, not an engine one:
+`main.py` calls `random.choice(nations).idea.infect(0.01)` before the run.
+Without it the model is mathematically correct but completely inert.
+
+### Territorial Expansion — **NOT implemented as documented**
+
+> [!CAUTION]
+> **This equation does not run.**
+> ```
+> spread_rate = population / carrying_capacity      ← dead code
+> ```
+> `spread_rate` is computed in `grid.py` lines 54–55 and **never used anywhere**.
+>
+> Actual behavior: every nation expands into every adjacent empty cell each year
+> at maximum speed, regardless of its population. Demography has **no effect**
+> on territorial expansion.
+>
+> This is the first item on the fix list.
 
 ---
 
@@ -126,47 +193,46 @@ winner takes the cell — both sides take losses
 
 | Phase | Description | Status |
 |---|---|---|
-| 0 | Architectural Refactor — DI, SRP, Single Source of Truth | ✅ Done |
-| 1 | Core OOP — Nation + World classes | ✅ Done |
-| 2 | Mathematical Engine — RK4 + Stochastic Growth | ✅ Done |
-| 3 | Spatial Environment — NumPy Grid + Spread + Warfare | ✅ Done |
-| 4 | Plotly Dashboard — Interactive map and population curves | ✅ Done |
-| 5 | Idea Spread — SIR model for ideological diffusion | ⏳ |
-| 6 | Advanced Logic — Economy, Trade, Collapse scenarios | ⏳ |
+| 1 | Core OOP — Nation, World, Grid, Traits | ✅ |
+| 2 | Visualization — Plotly heatmap + population curves | ✅ |
+| 3 | Spatial Environment — NumPy grid + spread + borders | ⚠️ partial |
+| 4 | Economy — Resources | ⚠️ partial |
+| 5 | Interaction — Conflict / Trade | ⚠️ partial |
+| 6 | Advanced Logic — AI | ⏳ |
+
+**Why "partial":**
+
+- **3** — grid, expansion and borders work, but `spread_rate` is dead code (see above)
+- **4** — food, production and famine exist inside `Nation` since Phase 1. No trade, no market, no shared stock
+- **5** — conflict is done (war + border attrition). Trade has not started
 
 ---
 
 ## What's Coming
 
-**Phase 5 — Idea Spread**
+**Asabiyyah (العصبية)**
 
-This is the intellectual core of the project — the part that makes it Omran
-and not just another population simulator.
+`asabiyyah.py` exists but is empty (0 bytes). The design is **still an open question**.
 
-The plan: add `idea_strength` and `asabiyyah` as dynamic variables to each
-civilization. Ideas spread between neighboring civilizations using a modified
-SIR model (Susceptible → Infected → Resistant). A civilization exposed to a
-stronger idea may adopt it — strengthening its cohesion — or resist it,
-triggering conflict.
+Decided so far (from Dr. Zeinab Boumehdi's paper, 2020):
 
-Asabiyyah then decays when the driving idea weakens:
+- Asabiyyah is **generational, not contagious** — an internal property, strongest at
+  founding and weakening over time. It is not transmitted between nations like the SIR model.
+- Its combat effect applies in `border_attrition()` only, not in `receive_damage()`,
+  to avoid double-counting.
+- Affluence = `population / carrying_capacity`.
 
-```
-dA/dt = -0.01 x (1 - idea_strength)
-```
-
-The current architecture makes this possible cleanly: nations are self-contained,
-the grid is spatially independent, and neighbors are already detected correctly.
-Phase 5 adds a new layer on top of what exists — it does not require rebuilding
-anything.
+The earlier equation `dA/dt = -0.01 × (1 - idea_strength)` is **rejected** — it was an
+early proposal made before asabiyyah was determined to be generational.
 
 ---
 
 ## Intellectual Lineage
 
-- **Ibn Khaldun** — *Muqaddimah* (1377) — Theory of Asabiyyah and civilizational cycles
+- **Ibn Khaldun** — *Muqaddimah* (1377) — Asabiyyah and civilizational cycles
 - **Peter Turchin** — *Cliodynamics* — Mathematical modeling of historical dynamics
 - **Thomas Malthus** — Population and resource limits
+- **د. زينب بومهدي (2020)** — *مفهوم العصبية ونشأة الدولة في الفكر الخلدوني*
 
 ---
 

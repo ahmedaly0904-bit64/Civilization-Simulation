@@ -1,8 +1,8 @@
 import random
 from nation import Nation
 from grid import WorldGrid
-
-
+IDEA_TRANSMISSION_RATE = 0.05
+RECOVERY_RATE = 0.1
 
 class WorldModel:
     """
@@ -46,9 +46,23 @@ class WorldModel:
                 neighbors = self.grid.get_neighbors(nation)
                 nation.step(neighbors)
         self.grid.spread(self.nations)
-
-
-
+        self.spread_idea()
+        self.recover_idea()
+        for nation in self.nations:
+            nation.pop_history.append(nation.population)
+    def spread_idea(self):
+        for nation in self.nations:
+            if not nation.is_alive:
+                continue
+            neighbors = self.grid.get_neighbors(nation)
+            total_rate = 0.0
+            for neighbor in neighbors:
+                total_rate += IDEA_TRANSMISSION_RATE * neighbor.idea.i
+            nation.idea.infect(min(1.0,total_rate))
+    def recover_idea(self):
+        for nation in self.nations:
+            if nation.is_alive:
+                nation.idea.recover(RECOVERY_RATE)
     def run(self, years: int):
         for _ in range(years):
             self.step()
